@@ -3,31 +3,51 @@
 ## Overview
 Complete Log4Shell (CVE-2021-44228) vulnerability lab environment with exploitation tools and comprehensive detection rules for YARA, Sigma, and Nuclei.
 
+⚠️ **Status**: Lab is 90% complete - vulnerability confirmed working, final exploitation testing needed.
+
 ## Quick Start
 
-### 1. Build and Start the Lab
+### 1. Clone Repository
 ```bash
-docker-compose up -d
+git clone https://github.com/hasamba/ProxyLogonLab.git log4shell-security-lab
+cd log4shell-security-lab
 ```
 
-### 2. Access the Attacker Container
+### 2. Start the Lab (Use Simple Version)
 ```bash
+# Use the working simple version
+docker-compose -f docker-compose-simple.yml up -d --build
+```
+
+### 3. Verify Setup
+```bash
+# Check all containers running
+docker ps
+
+# Test vulnerability (should expand Java version)
+docker exec attacker-machine curl -H "User-Agent: test_\${java:version}" http://log4shell-simple:8080
+```
+
+### 4. Run Exploitation
+```bash
+# Terminal 1: Start listener
 docker exec -it attacker-machine /bin/bash
-```
-
-### 3. Run the Exploitation
-```bash
 cd /tools
-
-# Start callback listener (in one terminal)
 python3 listener.py
 
-# Run exploitation (in another terminal)
+# Terminal 2: Run exploit
+docker exec -it attacker-machine /bin/bash
+cd /tools
 python3 exploit.py
+
+# Check success
+docker exec log4shell-simple ls -la /tmp/pwned.txt
 ```
 
-### 4. Run Detection Tools
+### 5. Run Detection Tools
 ```bash
+docker exec -it attacker-machine /bin/bash
+cd /tools
 python3 detect.py
 ```
 
