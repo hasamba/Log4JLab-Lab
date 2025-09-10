@@ -1,0 +1,271 @@
+title: Log4Shell JNDI Injection Attempt
+id: 5ee2bcd0-7d5e-4586-8b9f-6c3e373f2b87
+status: experimental
+description: Detects Log4Shell exploitation attempts via JNDI injection patterns in various log sources
+author: Security Research Lab
+date: 2025/01/10
+references:
+    - https://www.lunasec.io/docs/blog/log4j-zero-day/
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+tags:
+    - attack.initial_access
+    - attack.execution
+    - attack.t1190
+    - cve.2021.44228
+logsource:
+    category: webserver
+detection:
+    selection_basic:
+        - '${jndi:ldap://'
+        - '${jndi:ldaps://'
+        - '${jndi:rmi://'
+        - '${jndi:dns://'
+        - '${jndi:iiop://'
+        - '${jndi:http://'
+        - '${jndi:nis://'
+        - '${jndi:nds://'
+        - '${jndi:corba://'
+    selection_obfuscated:
+        - '${${::-j}ndi:'
+        - '${${lower:j}ndi:'
+        - '${${upper:j}ndi:'
+        - '${${env:'
+        - '${${sys:'
+        - '${${::-'
+    condition: selection_basic or selection_obfuscated
+falsepositives:
+    - Legitimate applications that use JNDI lookups (very rare)
+    - Security testing and scanning
+level: critical
+
+---
+
+title: Log4Shell Exploitation - Suspicious Java Process Execution
+id: 9be28e76-6b9e-4f5a-a0ae-2c6a0b3e7d45
+status: experimental
+description: Detects suspicious Java process execution that may indicate successful Log4Shell exploitation
+author: Security Research Lab
+date: 2025/01/10
+references:
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+tags:
+    - attack.execution
+    - attack.t1059
+    - cve.2021.44228
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+        ParentImage|endswith:
+            - '\java.exe'
+            - '\javaw.exe'
+    selection_child:
+        Image|endswith:
+            - '\cmd.exe'
+            - '\powershell.exe'
+            - '\pwsh.exe'
+            - '\bash.exe'
+            - '\sh.exe'
+    selection_suspicious_cmd:
+        CommandLine|contains:
+            - 'wget'
+            - 'curl'
+            - 'certutil'
+            - 'bitsadmin'
+            - 'Invoke-WebRequest'
+            - 'DownloadString'
+            - 'DownloadFile'
+    condition: selection_parent and (selection_child or selection_suspicious_cmd)
+falsepositives:
+    - Legitimate Java applications that spawn subprocesses
+level: high
+
+---
+
+title: Log4Shell Network Callback Detection
+id: d8f7b8e2-4c3a-4d9e-8f2b-6a1e9c5b7d3f
+status: experimental
+description: Detects network connections to suspicious LDAP/RMI servers indicating Log4Shell exploitation
+author: Security Research Lab
+date: 2025/01/10
+references:
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+tags:
+    - attack.command_and_control
+    - attack.t1071
+    - cve.2021.44228
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection_process:
+        Image|endswith:
+            - '\java.exe'
+            - '\javaw.exe'
+    selection_ports:
+        DestinationPort:
+            - 389   # LDAP
+            - 636   # LDAPS
+            - 1389  # Common alternate LDAP
+            - 1099  # RMI
+            - 8080  # Common HTTP callback
+            - 8888  # Common HTTP callback
+    selection_suspicious_dest:
+        DestinationIp|startswith:
+            - '10.'
+            - '172.16.'
+            - '172.17.'
+            - '172.18.'
+            - '172.19.'
+            - '172.20.'
+            - '172.21.'
+            - '172.22.'
+            - '172.23.'
+            - '172.24.'
+            - '172.25.'
+            - '172.26.'
+            - '172.27.'
+            - '172.28.'
+            - '172.29.'
+            - '172.30.'
+            - '172.31.'
+            - '192.168.'
+    condition: selection_process and selection_ports and not selection_suspicious_dest
+falsepositives:
+    - Legitimate LDAP connections from Java applications
+level: medium
+
+---
+
+title: Log4Shell File Drop Detection
+id: f5e8c9d1-2b4a-4e6f-9c8d-7a5e3b9f1d2c
+status: experimental
+description: Detects suspicious file creation by Java processes that may indicate Log4Shell exploitation
+author: Security Research Lab
+date: 2025/01/10
+references:
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+tags:
+    - attack.persistence
+    - attack.t1105
+    - cve.2021.44228
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection_process:
+        Image|endswith:
+            - '\java.exe'
+            - '\javaw.exe'
+    selection_suspicious_paths:
+        TargetFilename|contains:
+            - '\Temp\'
+            - '\tmp\'
+            - '\Users\Public\'
+            - '\ProgramData\'
+            - '\AppData\Local\Temp\'
+    selection_suspicious_extensions:
+        TargetFilename|endswith:
+            - '.jsp'
+            - '.jspx'
+            - '.war'
+            - '.ear'
+            - '.jar'
+            - '.class'
+            - '.ps1'
+            - '.bat'
+            - '.cmd'
+            - '.sh'
+            - '.exe'
+            - '.dll'
+    condition: selection_process and selection_suspicious_paths and selection_suspicious_extensions
+falsepositives:
+    - Legitimate Java applications creating temporary files
+level: medium
+
+---
+
+title: Log4Shell Webshell Detection
+id: a7b9e4d3-5c8f-4e2a-9d1b-8c7e6f5a3b2d
+status: experimental
+description: Detects creation of potential webshells via Log4Shell exploitation
+author: Security Research Lab
+date: 2025/01/10
+references:
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+tags:
+    - attack.persistence
+    - attack.t1505.003
+    - cve.2021.44228
+logsource:
+    category: file_event
+    product: linux
+detection:
+    selection_paths:
+        TargetFilename|contains:
+            - '/webapps/'
+            - '/www/'
+            - '/htdocs/'
+            - '/html/'
+            - '/ROOT/'
+            - '/tomcat/'
+    selection_extensions:
+        TargetFilename|endswith:
+            - '.jsp'
+            - '.jspx'
+            - '.aspx'
+            - '.ashx'
+            - '.php'
+            - '.php3'
+            - '.php4'
+            - '.php5'
+            - '.phtml'
+    selection_recent:
+        # File created in last 24 hours (implementation specific)
+        EventTime: recent
+    condition: selection_paths and selection_extensions and selection_recent
+falsepositives:
+    - Legitimate web application deployments
+    - Development activities
+level: high
+
+---
+
+title: Log4Shell Application Log Patterns
+id: c9d8e5f2-7a3b-4e1c-8f9d-2b6a4e8c9d7f
+status: experimental
+description: Detects Log4Shell exploitation patterns in application logs
+author: Security Research Lab
+date: 2025/01/10
+references:
+    - https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+tags:
+    - attack.initial_access
+    - attack.t1190
+    - cve.2021.44228
+logsource:
+    product: application
+    service: log4j
+detection:
+    selection_lookup:
+        Message|contains:
+            - 'Looking up JNDI resource'
+            - 'JNDI lookup:'
+            - 'javax.naming.Context.lookup'
+    selection_remote:
+        Message|contains:
+            - 'ldap://'
+            - 'ldaps://'
+            - 'rmi://'
+            - 'dns://'
+    selection_error:
+        Message|contains:
+            - 'javax.naming.NamingException'
+            - 'javax.naming.CommunicationException'
+            - 'java.lang.ClassNotFoundException'
+            - 'java.lang.ClassCastException'
+    condition: (selection_lookup and selection_remote) or selection_error
+falsepositives:
+    - Legitimate JNDI lookups (rare in most applications)
+level: high

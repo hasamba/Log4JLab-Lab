@@ -1,0 +1,36 @@
+version: '3'
+
+services:
+  vulnerable-app:
+    build: ./vulnerable-app
+    container_name: log4shell-vulnerable
+    ports:
+      - "8080:8080"
+    environment:
+      - JAVA_OPTS=-Dcom.sun.jndi.ldap.object.trustURLCodebase=true
+    networks:
+      - log4shell-net
+
+  ldap-server:
+    build: ./ldap-exploit
+    container_name: ldap-exploit-server
+    ports:
+      - "1389:1389"
+      - "8888:8888"
+    networks:
+      - log4shell-net
+
+  attacker:
+    build: ./attacker
+    container_name: attacker-machine
+    stdin_open: true
+    tty: true
+    networks:
+      - log4shell-net
+    volumes:
+      - ./detection-rules:/detection-rules
+      - ./logs:/logs
+
+networks:
+  log4shell-net:
+    driver: bridge
