@@ -3,6 +3,8 @@ FROM kalilinux/kali-rolling
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
+    python3-requests \
+    python3-colorama \
     curl \
     netcat-traditional \
     nmap \
@@ -10,13 +12,11 @@ RUN apt-get update && apt-get install -y \
     nuclei \
     git \
     vim \
+    pipx \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages
-RUN pip3 install requests colorama
-
-# Install Sigma tools
-RUN pip3 install sigma-cli pySigma
+# Use pipx for Sigma tools (or install via apt if available)
+RUN pipx install sigma-cli || pip3 install --break-system-packages sigma-cli pySigma
 
 WORKDIR /tools
 
