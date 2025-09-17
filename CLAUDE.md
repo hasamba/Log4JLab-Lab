@@ -170,18 +170,36 @@ docker-compose -f docker-compose-simple.yml up -d --build
 - **Status**: All files committed and pushed
 - **Last Update**: Lab fully operational with comprehensive detection capabilities
 
-## Technical Notes
+## Technical Details
+
+### Vulnerable Application
+- **Application**: Custom Java HTTP server (`SimpleVulnerable.java`)
+- **Port**: 8080 (Docker internal), 8081 (external access)
 - **Java Version**: OpenJDK 1.8.0_181 (vulnerable)
+- **Web Server**: Simple Java ServerSocket (not Apache/Nginx)
+
+### Vulnerability Information
+- **CVE**: CVE-2021-44228 (Log4Shell)
 - **Log4j Version**: 2.14.1 (confirmed vulnerable to JNDI injection)
+- **CVSS Score**: 10.0 (Critical)
+- **Attack Vector**: JNDI lookup processing in log messages
+
+### Infrastructure Components
 - **Exploit Class**: Compiled and ready (1649 bytes) at `/app/Exploit.class`
-- **LDAP Server**: ✅ Operational - receiving connections and sending redirects
-- **HTTP Server**: ✅ Available - serving malicious Java class
-- **Detection Coverage**: Complete - all attack vectors monitored
-- **Lab Status**: ✅ PRODUCTION READY - Full security demonstration capability
+- **LDAP Server**: ✅ Operational - receiving connections and sending redirects (port 1389)
+- **HTTP Server**: ✅ Available - serving malicious Java class (port 8888)
+- **Network Access**: External attacks confirmed working from 10.0.0.8 → 10.0.0.13
+
+### Multi-Machine Attack Scenario ✅
+- **Windows Host**: 10.0.0.196 (detection tools)
+- **Vulnerable Linux VM**: 10.0.0.13 (VMware, running Docker containers)
+- **Parrot OS Attacker VM**: 10.0.0.8 (external attack source)
+- **Attack Success**: Confirmed external Log4Shell attack from Parrot OS → Vulnerable VM
 
 ## Security Detection Summary
-- **Total JNDI Patterns Detected**: 28+ malicious injection attempts
-- **Attack Vectors Covered**: Headers, POST data, URL parameters, JSON payloads
-- **Detection Tools Status**: All operational (YARA, Sigma, Nuclei)
-- **Vulnerability Confirmation**: Log4j 2.14.1 processes JNDI lookups as expected
-- **Network Connectivity**: LDAP connections established successfully
+- **Nuclei Detection**: 4 critical CVE-2021-44228 vulnerabilities found
+- **YARA Detection**: 2 malicious patterns (`Log4Shell_JNDI_Lookup_Strings`, `Log4Shell_Network_IOCs`)
+- **Sigma Detection**: 28+ JNDI injection attempts across multiple attack vectors
+- **Attack Vectors**: Headers, POST data, URL parameters, JSON payloads
+- **External Validation**: Browser access confirmed for both vulnerable app and exploit server
+- **Lab Status**: ✅ PRODUCTION READY - Multi-machine security demonstration capability

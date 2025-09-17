@@ -5,7 +5,17 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(bash:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Read(//c/Users/yaniv/10Root Dropbox/Yaniv Radunsky/Documents/50-59 Projects/57 ClaudeCode/**)",
+      "Bash(git clone:*)",
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(sed:*)",
+      "Read(//c/Users/yaniv/AppData/Roaming/Claude/**)",
+      "Bash(npx:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(findstr:*)",
+      "Bash(docker-compose:*)"
     ],
     "deny": [],
     "ask": []
