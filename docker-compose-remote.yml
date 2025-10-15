@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # Vulnerable application with exposed ports for remote access
+  log4shell-simple:
+    build: ./vulnerable-simple
+    container_name: log4shell-simple
+    hostname: vulnerable-app
+    ports:
+      - "8081:8080"  # Expose to host for remote access
+    networks:
+      log4shell-net:
+        ipv4_address: 172.18.0.3
+    environment:
+      - JAVA_OPTS=-Dlog4j2.formatMsgNoLookups=false
+    restart: unless-stopped
+
+  # LDAP exploit server with exposed ports
+  ldap-exploit-server:
+    build: ./ldap-exploit
+    container_name: ldap-exploit-server
+    hostname: ldap-exploit-server
+    ports:
+      - "1389:1389"  # Expose LDAP port for remote exploitation
+      - "8888:8888"  # Expose HTTP port for serving payloads
+    networks:
+      log4shell-net:
+        ipv4_address: 172.18.0.2
+    volumes:
+      - ./ldap-exploit:/app
+    command: python3 /app/ldap_server.py
+    restart: unless-stopped
+
+  # Attacker tools container
+  attacker-machine:
+    build: ./attacker
+    container_name: attacker-machine
+    hostname: attacker
+    networks:
+      log4shell-net:
+        ipv4_address: 172.18.0.4
+    volumes:
+      - ./attacker:/tools
+      - ./detection-rules:/detection-rules
+    stdin_open: true
+    tty: true
+    command: tail -f /dev/null
+
+networks:
+  log4shell-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16

